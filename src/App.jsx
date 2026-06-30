@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { LogIn, LogOut, Plus, Download, Copy, Check, ChevronLeft, ChevronRight, X, BookOpen } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
+import { LogIn, LogOut, Plus, Download, Copy, Check, ChevronLeft, ChevronRight, X, BookOpen, Mail } from "lucide-react";
+
+/* ============================================================
+   PEGA AQUI TUS DOS DATOS DE SUPABASE
+   ============================================================ */
+const SUPABASE_URL = "https://ishvzrvtgrxmaeudmtqn.supabase.co";   
+const SUPABASE_KEY = "sb_publishable_KSbc7DjuTcZNfCqCUoyGqA_OQLuGkXy"; 
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ============================ estilos ============================ */
 const CSS = `
@@ -24,8 +33,10 @@ const CSS = `
 .bp-stat .l{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
 .bp-btn{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;border-radius:9px;padding:9px 14px;border:1px solid var(--line);background:var(--panel2);color:var(--parch);cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:.15s}
 .bp-btn:hover{border-color:var(--golddim)}
+.bp-btn:disabled{opacity:.5;cursor:default}
 .bp-btn.gold{background:var(--gold);color:#1a1407;border-color:var(--gold)}
 .bp-btn.gold:hover{filter:brightness(1.06)}
+.bp-link{background:none;border:none;color:var(--golddim);font-size:12px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}
 .bp-input{width:100%;background:var(--ink);border:1px solid var(--line);border-radius:9px;color:var(--parch);padding:10px 12px;font-family:'JetBrains Mono',monospace;font-size:14px;outline:none}
 .bp-input:focus{border-color:var(--gold)}
 .bp-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:block}
@@ -42,15 +53,11 @@ const CSS = `
 .bp-overlay{position:fixed;inset:0;background:rgba(8,6,3,.72);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
 .bp-note{font-size:12px;color:var(--muted);line-height:1.5}
 .bp-tag{display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--golddim);border:1px solid var(--line);border-radius:7px;padding:3px 8px}
+.bp-msg{font-size:13px;border-radius:9px;padding:10px 12px;margin-bottom:14px;line-height:1.5}
+.bp-msg.ok{background:rgba(95,190,133,.12);border:1px solid rgba(95,190,133,.4);color:var(--win)}
+.bp-msg.err{background:rgba(217,98,78,.12);border:1px solid rgba(217,98,78,.4);color:var(--loss)}
 @media(max-width:560px){.bp-h1{font-size:24px}.bp-day{padding:5px}.bp-day .pct{font-size:12px}}
 `;
-
-/* ============================ storage (localStorage del navegador) ============================ */
-const store = {
-  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
-  set(k,v){ try{ localStorage.setItem(k, v); return true; }catch(e){ return false; } },
-};
-const enc = (s)=>{ try{ return btoa(unescape(encodeURIComponent(s))); }catch(e){ return s; } };
 
 /* ============================ indicador MT5 (descarga) ============================ */
 const MQL5 = `//+------------------------------------------------------------------+
@@ -100,25 +107,46 @@ void OnDeinit(const int reason){
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const DOW = ["Lu","Ma","Mi","Ju","Vi","Sa","Do"];
 const hoy = () => new Date().toISOString().slice(0,10);
+const configOK = !SUPABASE_URL.startsWith("PEGA_") && !SUPABASE_KEY.startsWith("PEGA_");
 
 export default function App(){
+  const [session,setSession] = useState(null);
   const [ready,setReady] = useState(false);
-  const [hasAuth,setHasAuth] = useState(false);
-  const [authed,setAuthed] = useState(false);
   const [trades,setTrades] = useState([]);
+  const [cargandoDatos,setCargandoDatos] = useState(false);
   const [cursor,setCursor] = useState(()=>{ const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; });
   const [showAdd,setShowAdd] = useState(false);
   const [tab,setTab] = useState("bitacora");
 
   useEffect(()=>{
-    const a = store.get("patron_auth");
-    setHasAuth(!!a);
-    const t = store.get("patron_trades");
-    if(t){ try{ setTrades(JSON.parse(t)); }catch(e){} }
-    setReady(true);
+    if(!configOK){ setReady(true); return; }
+    supabase.auth.getSession().then(({data})=>{ setSession(data.session); setReady(true); });
+    const { data:sub } = supabase.auth.onAuthStateChange((_e,s)=>setSession(s));
+    return ()=> sub.subscription.unsubscribe();
   },[]);
 
-  const persist = (next)=>{ setTrades(next); store.set("patron_trades", JSON.stringify(next)); };
+  useEffect(()=>{
+    if(!session){ setTrades([]); return; }
+    cargarTrades();
+  },[session]);
+
+  const cargarTrades = async ()=>{
+    setCargandoDatos(true);
+    const { data, error } = await supabase.from("operaciones").select("*").order("fecha",{ascending:false});
+    if(!error && data) setTrades(data);
+    setCargandoDatos(false);
+  };
+
+  const agregarTrade = async (t)=>{
+    const fila = { fecha:t.fecha, simbolo:t.simbolo, tf:t.tf, direccion:t.direccion, estructura:t.estructura, resultado:t.resultado, pct:Number(t.pct)||0 };
+    const { data, error } = await supabase.from("operaciones").insert(fila).select();
+    if(!error && data) setTrades(prev=>[data[0],...prev]);
+  };
+
+  const borrarTrade = async (id)=>{
+    const { error } = await supabase.from("operaciones").delete().eq("id",id);
+    if(!error) setTrades(prev=>prev.filter(x=>x.id!==id));
+  };
 
   const monthTrades = useMemo(()=> trades.filter(t=>{
     const d = new Date(t.fecha+"T00:00:00");
@@ -144,12 +172,12 @@ export default function App(){
     return map;
   },[monthTrades]);
 
+  if(!configOK) return <Shell><ConfigFaltante/></Shell>;
   if(!ready) return <Shell><div className="bp-wrap"><p className="bp-note">Cargando…</p></div></Shell>;
-  if(!authed) return <Gate hasAuth={hasAuth} onAuth={(ok)=>{ if(ok){ setHasAuth(true); setAuthed(true); } }} />;
+  if(!session) return <Gate/>;
 
-  /* ---- calendario ---- */
   const first = new Date(cursor.y,cursor.m,1);
-  const startDow = (first.getDay()+6)%7; // lunes=0
+  const startDow = (first.getDay()+6)%7;
   const days = new Date(cursor.y,cursor.m+1,0).getDate();
   const cells = [];
   for(let i=0;i<startDow;i++) cells.push(null);
@@ -169,19 +197,19 @@ export default function App(){
             <div style={{marginTop:8,display:"flex",gap:8,flexWrap:"wrap"}}>
               <span className="bp-tag"><BookOpen size={12}/> XAUUSD</span>
               <span className="bp-tag">TP 1:2 · BE 1:1</span>
+              <span className="bp-tag"><Mail size={12}/> {session.user.email}</span>
             </div>
           </div>
           <div style={{display:"flex",gap:8}}>
             <button className="bp-btn" onClick={()=>setTab(tab==="bitacora"?"descargas":"bitacora")}>
               {tab==="bitacora" ? <><Download size={15}/> Descargas</> : <><BookOpen size={15}/> Bitácora</>}
             </button>
-            <button className="bp-btn" onClick={()=>setAuthed(false)}><LogOut size={15}/> Salir</button>
+            <button className="bp-btn" onClick={()=>supabase.auth.signOut()}><LogOut size={15}/> Salir</button>
           </div>
         </div>
 
         {tab==="bitacora" ? (
           <>
-            {/* tape de resumen */}
             <div className="bp-tape">
               <div className="bp-stat"><span className="v" style={{color:"var(--gold)"}}>{stats.n}</span><span className="l">Entradas mes</span></div>
               <div className="bp-stat"><span className="v">{stats.wr.toFixed(0)}%</span><span className="l">Aciertos</span></div>
@@ -195,7 +223,6 @@ export default function App(){
               </div>
             </div>
 
-            {/* navegacion mes */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"4px 0 14px"}}>
               <button className="bp-btn" onClick={()=>moveMonth(-1)}><ChevronLeft size={16}/></button>
               <div style={{fontWeight:600,fontSize:18}} className="bp-mono">{MESES[cursor.m]} {cursor.y}</div>
@@ -205,7 +232,6 @@ export default function App(){
               </div>
             </div>
 
-            {/* ledger mensual */}
             <div className="bp-grid" style={{marginBottom:8}}>
               {DOW.map(d=><div key={d} className="bp-dow">{d}</div>)}
             </div>
@@ -228,13 +254,12 @@ export default function App(){
               })}
             </div>
 
-            {/* lista del mes */}
             <div className="bp-card" style={{marginTop:22}}>
               <div className="bp-row" style={{color:"var(--muted)",fontSize:11,letterSpacing:".12em",textTransform:"uppercase"}}>
-                <span>Detalle del mes</span><span>{monthTrades.length} registros</span>
+                <span>Detalle del mes</span><span>{cargandoDatos?"cargando…":monthTrades.length+" registros"}</span>
               </div>
               {monthTrades.length===0 ? (
-                <div style={{padding:"22px 14px"}} className="bp-note">Aún no hay entradas este mes. Pulsa “Registrar” cuando el bot mande una señal y anota su resultado.</div>
+                <div style={{padding:"22px 14px"}} className="bp-note">{cargandoDatos?"Trayendo tus datos de la nube…":"Aún no hay entradas este mes. Pulsa “Registrar” cuando el bot mande una señal y anota su resultado."}</div>
               ) : (
                 [...monthTrades].sort((a,b)=>a.fecha<b.fecha?1:-1).map(t=>(
                   <div key={t.id} className="bp-row">
@@ -248,14 +273,14 @@ export default function App(){
                       <span className="bp-mono" style={{fontWeight:700,color:(Number(t.pct)||0)>0?"var(--win)":(Number(t.pct)||0)<0?"var(--loss)":"var(--be)"}}>
                         {(Number(t.pct)||0)>0?"+":""}{(Number(t.pct)||0).toFixed(2)}%
                       </span>
-                      <button className="bp-btn" style={{padding:"5px 8px"}} onClick={()=>persist(trades.filter(x=>x.id!==t.id))}><X size={13}/></button>
+                      <button className="bp-btn" style={{padding:"5px 8px"}} onClick={()=>borrarTrade(t.id)}><X size={13}/></button>
                     </div>
                   </div>
                 ))
               )}
             </div>
             <p className="bp-note" style={{marginTop:14}}>
-              Acceso de demostración local: el usuario, la contraseña y los registros se guardan solo en este navegador, no es seguridad real. Las entradas se anotan a mano (el bot y esta página no se sincronizan solos).
+              Tus datos se guardan en la nube (Supabase) y solo tú los ves. Puedes abrir esta bitácora desde cualquier dispositivo con tu correo y contraseña.
             </p>
           </>
         ) : (
@@ -263,7 +288,7 @@ export default function App(){
         )}
       </div>
 
-      {showAdd && <AddForm onClose={()=>setShowAdd(false)} onSave={(t)=>{ persist([{...t,id:Date.now()},...trades]); setShowAdd(false); }} />}
+      {showAdd && <AddForm onClose={()=>setShowAdd(false)} onSave={async (t)=>{ await agregarTrade(t); setShowAdd(false); }} />}
     </Shell>
   );
 }
@@ -272,49 +297,117 @@ function Shell({children}){
   return <div className="bp-root"><style>{CSS}</style>{children}</div>;
 }
 
-/* ============================ login / setup ============================ */
-function Gate({hasAuth,onAuth}){
-  const [u,setU] = useState(""); const [p,setP] = useState("");
-  const [p2,setP2] = useState(""); const [err,setErr] = useState("");
-  const setup = !hasAuth;
+/* ============================ aviso si faltan credenciales ============================ */
+function ConfigFaltante(){
+  return (
+    <div className="bp-wrap" style={{maxWidth:520,paddingTop:80}}>
+      <div className="bp-eyebrow">Configuración</div>
+      <h1 className="bp-h1" style={{marginBottom:10}}>Falta pegar tus datos de Supabase</h1>
+      <div className="bp-card" style={{padding:20}}>
+        <p className="bp-note" style={{marginBottom:10}}>Abre el archivo <span className="bp-mono">src/App.jsx</span> y, arriba del todo, reemplaza:</p>
+        <pre className="bp-mono" style={{background:"var(--ink)",border:"1px solid var(--line)",borderRadius:10,padding:14,fontSize:12,color:"var(--parch)",overflow:"auto"}}>{`const SUPABASE_URL = "https://....supabase.co";
+const SUPABASE_KEY = "sb_publishable_....";`}</pre>
+        <p className="bp-note" style={{marginTop:10}}>Guarda el archivo y la página se conectará sola.</p>
+      </div>
+    </div>
+  );
+}
 
-  const submit = ()=>{
-    setErr("");
-    if(setup){
-      if(u.trim().length<3) return setErr("Usa un usuario de al menos 3 caracteres.");
-      if(p.length<4) return setErr("Usa una contraseña de al menos 4 caracteres.");
-      if(p!==p2) return setErr("Las contraseñas no coinciden.");
-      store.set("patron_auth", JSON.stringify({u:u.trim(), p:enc(p)}));
-      return onAuth(true);
+/* ============================ login / registro / recuperar ============================ */
+function Gate(){
+  const [modo,setModo] = useState("entrar"); // entrar | registrar | recuperar
+  const [email,setEmail] = useState(""); const [pass,setPass] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [err,setErr] = useState(""); const [ok,setOk] = useState("");
+
+  const limpiar = ()=>{ setErr(""); setOk(""); };
+
+  const entrar = async ()=>{
+    limpiar(); setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email:email.trim(), password:pass });
+    setBusy(false);
+    if(error){
+      if(/Email not confirmed/i.test(error.message)) return setErr("Aún no confirmas tu correo. Revisa tu bandeja (y spam) y haz clic en el enlace.");
+      return setErr("Correo o contraseña incorrectos.");
     }
-    const raw = store.get("patron_auth");
-    if(!raw) return setErr("No hay acceso configurado.");
-    const a = JSON.parse(raw);
-    if(a.u===u.trim() && a.p===enc(p)) return onAuth(true);
-    setErr("Usuario o contraseña incorrectos.");
   };
+
+  const registrar = async ()=>{
+    limpiar();
+    if(pass.length<6) return setErr("La contraseña debe tener al menos 6 caracteres.");
+    setBusy(true);
+    const { data, error } = await supabase.auth.signUp({ email:email.trim(), password:pass });
+    setBusy(false);
+    if(error) return setErr(error.message);
+    if(data.user && !data.session){
+      setOk("¡Listo! Te enviamos un correo de confirmación. Ábrelo, haz clic en el enlace y luego entra aquí.");
+      setModo("entrar");
+    }
+  };
+
+  const recuperar = async ()=>{
+    limpiar();
+    if(!email.trim()) return setErr("Escribe tu correo para enviarte el enlace de recuperación.");
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+    setBusy(false);
+    if(error) return setErr(error.message);
+    setOk("Te enviamos un correo para restablecer tu contraseña. Revisa tu bandeja (y spam).");
+  };
+
+  const titulo = modo==="registrar" ? "Crear tu cuenta" : modo==="recuperar" ? "Recuperar contraseña" : "Entrar a tu bitácora";
+  const sub = modo==="registrar" ? "Regístrate con tu correo. Te enviaremos un enlace de confirmación."
+            : modo==="recuperar" ? "Te enviaremos un enlace a tu correo para crear una nueva contraseña."
+            : "Ingresa con tu correo y contraseña.";
 
   return (
     <Shell>
-      <div className="bp-wrap" style={{maxWidth:420,paddingTop:80}}>
+      <div className="bp-wrap" style={{maxWidth:420,paddingTop:70}}>
         <div className="bp-eyebrow">Patrón Institucional</div>
-        <h1 className="bp-h1" style={{marginBottom:4}}>Bitácora del patrón</h1>
-        <p className="bp-note" style={{marginBottom:24}}>{setup ? "Crea tu acceso para abrir la bitácora." : "Ingresa para abrir tu bitácora."}</p>
+        <h1 className="bp-h1" style={{marginBottom:4}}>{titulo}</h1>
+        <p className="bp-note" style={{marginBottom:22}}>{sub}</p>
         <div className="bp-card" style={{padding:20}}>
-          <label className="bp-label">Usuario</label>
-          <input className="bp-input" value={u} onChange={e=>setU(e.target.value)} placeholder="tu_usuario" style={{marginBottom:14}}/>
-          <label className="bp-label">Contraseña</label>
-          <input className="bp-input" type="password" value={p} onChange={e=>setP(e.target.value)} placeholder="••••••" style={{marginBottom: setup?14:18}} onKeyDown={e=>e.key==="Enter"&&!setup&&submit()}/>
-          {setup && <>
-            <label className="bp-label">Repite la contraseña</label>
-            <input className="bp-input" type="password" value={p2} onChange={e=>setP2(e.target.value)} placeholder="••••••" style={{marginBottom:18}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          {ok && <div className="bp-msg ok">{ok}</div>}
+          {err && <div className="bp-msg err">{err}</div>}
+
+          <label className="bp-label">Correo electrónico</label>
+          <input className="bp-input" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tucorreo@ejemplo.com" style={{marginBottom:14}}/>
+
+          {modo!=="recuperar" && <>
+            <label className="bp-label">Contraseña</label>
+            <input className="bp-input" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••" style={{marginBottom:18}}
+              onKeyDown={e=>{ if(e.key==="Enter") (modo==="registrar"?registrar():entrar()); }}/>
           </>}
-          {err && <p style={{color:"var(--loss)",fontSize:12,marginBottom:12}}>{err}</p>}
-          <button className="bp-btn gold" style={{width:"100%",justifyContent:"center"}} onClick={submit}>
-            <LogIn size={16}/> {setup ? "Crear acceso" : "Entrar"}
-          </button>
+
+          {modo==="entrar" && <>
+            <button className="bp-btn gold" disabled={busy} style={{width:"100%",justifyContent:"center"}} onClick={entrar}>
+              <LogIn size={16}/> {busy?"Entrando…":"Entrar"}
+            </button>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:14}}>
+              <button className="bp-link" onClick={()=>{limpiar();setModo("registrar");}}>Crear cuenta nueva</button>
+              <button className="bp-link" onClick={()=>{limpiar();setModo("recuperar");}}>Olvidé mi contraseña</button>
+            </div>
+          </>}
+
+          {modo==="registrar" && <>
+            <button className="bp-btn gold" disabled={busy} style={{width:"100%",justifyContent:"center"}} onClick={registrar}>
+              <Check size={16}/> {busy?"Creando…":"Crear cuenta"}
+            </button>
+            <div style={{marginTop:14,textAlign:"center"}}>
+              <button className="bp-link" onClick={()=>{limpiar();setModo("entrar");}}>Ya tengo cuenta · Entrar</button>
+            </div>
+          </>}
+
+          {modo==="recuperar" && <>
+            <button className="bp-btn gold" disabled={busy} style={{width:"100%",justifyContent:"center"}} onClick={recuperar}>
+              <Mail size={16}/> {busy?"Enviando…":"Enviar enlace"}
+            </button>
+            <div style={{marginTop:14,textAlign:"center"}}>
+              <button className="bp-link" onClick={()=>{limpiar();setModo("entrar");}}>Volver a entrar</button>
+            </div>
+          </>}
         </div>
-        <p className="bp-note" style={{marginTop:16}}>Este acceso es local a este navegador y sirve como demostración; no reemplaza un login seguro con servidor.</p>
+        <p className="bp-note" style={{marginTop:16}}>Tus datos quedan guardados de forma segura en la nube y solo tú puedes verlos.</p>
       </div>
     </Shell>
   );
@@ -323,9 +416,8 @@ function Gate({hasAuth,onAuth}){
 /* ============================ formulario ============================ */
 function AddForm({onClose,onSave}){
   const [f,setF] = useState({ fecha:hoy(), simbolo:"XAUUSD", tf:"5m", direccion:"BUY", estructura:"barato", resultado:"Ganada", pct:"2.00" });
+  const [guardando,setGuardando] = useState(false);
   const set = (k,v)=>setF(s=>({...s,[k]:v}));
-
-  // sugiere % segun resultado (1:2 con riesgo 1% => +2 / -1 / 0)
   const sugerir = (res)=>{ set("resultado",res); if(res==="Ganada") set("pct","2.00"); else if(res==="Perdida") set("pct","-1.00"); else set("pct","0.00"); };
 
   const sel = (label,val,key,opts)=>(
@@ -338,6 +430,8 @@ function AddForm({onClose,onSave}){
       </div>
     </div>
   );
+
+  const guardar = async ()=>{ setGuardando(true); await onSave(f); setGuardando(false); };
 
   return (
     <div className="bp-overlay" onClick={onClose}>
@@ -365,7 +459,7 @@ function AddForm({onClose,onSave}){
             <label className="bp-label">Resultado %</label>
             <input className="bp-input" type="number" step="0.01" value={f.pct} onChange={e=>set("pct",e.target.value)}/>
           </div>
-          <button className="bp-btn gold" style={{justifyContent:"center"}} onClick={()=>onSave(f)}><Check size={16}/> Guardar entrada</button>
+          <button className="bp-btn gold" disabled={guardando} style={{justifyContent:"center"}} onClick={guardar}><Check size={16}/> {guardando?"Guardando…":"Guardar entrada"}</button>
         </div>
       </div>
     </div>
@@ -409,9 +503,6 @@ function Descargas(){
           </ol>
         </div>
       </div>
-      <p className="bp-note" style={{marginTop:14}}>
-        Esta página es un prototipo funcional. Para que otras personas descarguen el indicador necesitas alojar el archivo en un servidor o repositorio público (por ejemplo GitHub) y publicar el enlace.
-      </p>
     </>
   );
 }
