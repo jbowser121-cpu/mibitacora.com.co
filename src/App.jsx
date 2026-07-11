@@ -1,508 +1,552 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { LogIn, LogOut, Plus, Download, Copy, Check, ChevronLeft, ChevronRight, X, BookOpen, Mail } from "lucide-react";
+import React, { useMemo, useState, useEffect } from "react";
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell,
+} from "recharts";
+import {
+  LayoutGrid, CalendarDays, ListOrdered, Activity, Layers, Circle, Plus, TrendingUp, X, Percent, DollarSign, Wallet,
+  ChevronLeft, ChevronRight,
+} from "lucide-react";
 
-/* ============================================================
-   PEGA AQUI TUS DOS DATOS DE SUPABASE
-   ============================================================ */
-const SUPABASE_URL = "https://ishvzrvtgrxmaeudmtqn.supabase.co";   
-const SUPABASE_KEY = "sb_publishable_KSbc7DjuTcZNfCqCUoyGqA_OQLuGkXy"; 
+/* =========================================================================
+   CONFIGURACIÓN  ── aquí conectas tu cuenta y tu Supabase
+   ========================================================================= */
+const CONFIG = {
+  cuenta: "AXI · XAUUSD.sa",
+  modo: "Demo · M15",
+  balanceInicial: 10000,          // saldo de referencia para convertir % <-> USD
+  dataSource: "demo",             // "demo"  |  "supabase"
+  supabase: {
+    url: "",                      // https://XXXX.supabase.co
+    anonKey: "",                  // eyJhbGciOi...
+    tabla: "operaciones",
+  },
+};
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-/* ============================ estilos ============================ */
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
-*{box-sizing:border-box}
-.bp-root{
-  --ink:#14110B; --panel:#1E1A12; --panel2:#231E15; --line:#342E20;
-  --gold:#E0B341; --golddim:#9A7B2E; --parch:#EDE4CF; --muted:#9C927C;
-  --win:#5FBE85; --loss:#D9624E; --be:#6E8BA0;
-  background:var(--ink); color:var(--parch);
-  font-family:'Space Grotesk',system-ui,sans-serif;
-  min-height:100vh; width:100%;
-}
-.bp-mono{font-family:'JetBrains Mono',ui-monospace,monospace}
-.bp-wrap{max-width:1040px;margin:0 auto;padding:28px 20px 64px}
-.bp-eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--golddim)}
-.bp-h1{font-size:30px;font-weight:700;letter-spacing:-.01em;margin:6px 0 0;line-height:1.05}
-.bp-card{background:var(--panel);border:1px solid var(--line);border-radius:14px}
-.bp-tape{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;margin:18px 0}
-.bp-stat{display:flex;flex-direction:column;gap:2px}
-.bp-stat .v{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;letter-spacing:-.02em}
-.bp-stat .l{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
-.bp-btn{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;border-radius:9px;padding:9px 14px;border:1px solid var(--line);background:var(--panel2);color:var(--parch);cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:.15s}
-.bp-btn:hover{border-color:var(--golddim)}
-.bp-btn:disabled{opacity:.5;cursor:default}
-.bp-btn.gold{background:var(--gold);color:#1a1407;border-color:var(--gold)}
-.bp-btn.gold:hover{filter:brightness(1.06)}
-.bp-link{background:none;border:none;color:var(--golddim);font-size:12px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}
-.bp-input{width:100%;background:var(--ink);border:1px solid var(--line);border-radius:9px;color:var(--parch);padding:10px 12px;font-family:'JetBrains Mono',monospace;font-size:14px;outline:none}
-.bp-input:focus{border-color:var(--gold)}
-.bp-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:block}
-.bp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
-.bp-dow{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center;padding:4px 0}
-.bp-day{aspect-ratio:1;border:1px solid var(--line);border-radius:9px;padding:7px 8px;display:flex;flex-direction:column;justify-content:space-between;background:var(--panel2);min-height:0}
-.bp-day.empty{background:transparent;border-color:transparent}
-.bp-day .dn{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)}
-.bp-day .pct{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;letter-spacing:-.02em}
-.bp-day .cnt{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-.bp-pill{font-family:'JetBrains Mono',monospace;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
-.bp-row{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--line)}
-.bp-row:last-child{border-bottom:none}
-.bp-overlay{position:fixed;inset:0;background:rgba(8,6,3,.72);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
-.bp-note{font-size:12px;color:var(--muted);line-height:1.5}
-.bp-tag{display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--golddim);border:1px solid var(--line);border-radius:7px;padding:3px 8px}
-.bp-msg{font-size:13px;border-radius:9px;padding:10px 12px;margin-bottom:14px;line-height:1.5}
-.bp-msg.ok{background:rgba(95,190,133,.12);border:1px solid rgba(95,190,133,.4);color:var(--win)}
-.bp-msg.err{background:rgba(217,98,78,.12);border:1px solid rgba(217,98,78,.4);color:var(--loss)}
-@media(max-width:560px){.bp-h1{font-size:24px}.bp-day{padding:5px}.bp-day .pct{font-size:12px}}
-`;
-
-/* ============================ indicador MT5 (descarga) ============================ */
-const MQL5 = `//+------------------------------------------------------------------+
-//|  TP Flotante - Patron (educativo)                                |
-//|  Dibuja Entrada, SL, BE (1:1) y TP (1:2) desde tu entrada        |
-//+------------------------------------------------------------------+
-#property indicator_chart_window
-#property indicator_plots 0
-
-input double Entrada  = 0.0;    // Entrada (0 = precio actual)
-input double SL       = 0.0;    // Stop Loss
-input bool   EsCompra = true;   // true=COMPRA, false=VENTA
-input double RatioTP  = 2.0;    // TP en R (1:2)
-input double RatioBE  = 1.0;    // BE en R (1:1)
-
-int OnInit(){ return(INIT_SUCCEEDED); }
-
-void Linea(string n,double p,color c,string t){
-  if(ObjectFind(0,n)<0) ObjectCreate(0,n,OBJ_HLINE,0,0,p);
-  ObjectSetDouble(0,n,OBJPROP_PRICE,p);
-  ObjectSetInteger(0,n,OBJPROP_COLOR,c);
-  ObjectSetInteger(0,n,OBJPROP_WIDTH,2);
-  ObjectSetString(0,n,OBJPROP_TEXT,t);
-}
-
-int OnCalculate(const int rt,const int pc,const datetime &t[],
-  const double &o[],const double &h[],const double &l[],
-  const double &cl[],const long &tv[],const long &v[],const int &sp[]){
-  if(SL<=0) return(rt);
-  double e = (Entrada>0)? Entrada : cl[rt-1];
-  double r = MathAbs(e-SL);
-  double tp,be;
-  if(EsCompra){ tp=e+r*RatioTP; be=e+r*RatioBE; }
-  else        { tp=e-r*RatioTP; be=e-r*RatioBE; }
-  Linea("PAT_ENTRADA",e, clrGold,      "Entrada");
-  Linea("PAT_SL",     SL,clrTomato,    "SL");
-  Linea("PAT_BE",     be,clrSkyBlue,   "BE 1:1");
-  Linea("PAT_TP",     tp,clrLimeGreen, "TP 1:2");
-  return(rt);
-}
-
-void OnDeinit(const int reason){
-  ObjectDelete(0,"PAT_ENTRADA"); ObjectDelete(0,"PAT_SL");
-  ObjectDelete(0,"PAT_BE");      ObjectDelete(0,"PAT_TP");
-}`;
-
-const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const DOW = ["Lu","Ma","Mi","Ju","Vi","Sa","Do"];
-const hoy = () => new Date().toISOString().slice(0,10);
-const configOK = !SUPABASE_URL.startsWith("PEGA_") && !SUPABASE_KEY.startsWith("PEGA_");
-
-export default function App(){
-  const [session,setSession] = useState(null);
-  const [ready,setReady] = useState(false);
-  const [trades,setTrades] = useState([]);
-  const [cargandoDatos,setCargandoDatos] = useState(false);
-  const [cursor,setCursor] = useState(()=>{ const d=new Date(); return {y:d.getFullYear(),m:d.getMonth()}; });
-  const [showAdd,setShowAdd] = useState(false);
-  const [tab,setTab] = useState("bitacora");
-
-  useEffect(()=>{
-    if(!configOK){ setReady(true); return; }
-    supabase.auth.getSession().then(({data})=>{ setSession(data.session); setReady(true); });
-    const { data:sub } = supabase.auth.onAuthStateChange((_e,s)=>setSession(s));
-    return ()=> sub.subscription.unsubscribe();
-  },[]);
-
-  useEffect(()=>{
-    if(!session){ setTrades([]); return; }
-    cargarTrades();
-  },[session]);
-
-  const cargarTrades = async ()=>{
-    setCargandoDatos(true);
-    const { data, error } = await supabase.from("operaciones").select("*").order("fecha",{ascending:false});
-    if(!error && data) setTrades(data);
-    setCargandoDatos(false);
-  };
-
-  const agregarTrade = async (t)=>{
-    const fila = { fecha:t.fecha, simbolo:t.simbolo, tf:t.tf, direccion:t.direccion, estructura:t.estructura, resultado:t.resultado, pct:Number(t.pct)||0 };
-    const { data, error } = await supabase.from("operaciones").insert(fila).select();
-    if(!error && data) setTrades(prev=>[data[0],...prev]);
-  };
-
-  const borrarTrade = async (id)=>{
-    const { error } = await supabase.from("operaciones").delete().eq("id",id);
-    if(!error) setTrades(prev=>prev.filter(x=>x.id!==id));
-  };
-
-  const monthTrades = useMemo(()=> trades.filter(t=>{
-    const d = new Date(t.fecha+"T00:00:00");
-    return d.getFullYear()===cursor.y && d.getMonth()===cursor.m;
-  }), [trades,cursor]);
-
-  const stats = useMemo(()=>{
-    const n = monthTrades.length;
-    const wins = monthTrades.filter(t=>t.resultado==="Ganada").length;
-    const losses = monthTrades.filter(t=>t.resultado==="Perdida").length;
-    const net = monthTrades.reduce((s,t)=>s+(Number(t.pct)||0),0);
-    const wr = (wins+losses)>0 ? (wins/(wins+losses)*100) : 0;
-    return { n, wins, losses, net, wr };
-  },[monthTrades]);
-
-  const byDay = useMemo(()=>{
-    const map = {};
-    monthTrades.forEach(t=>{
-      const day = new Date(t.fecha+"T00:00:00").getDate();
-      if(!map[day]) map[day]={count:0,net:0};
-      map[day].count++; map[day].net += (Number(t.pct)||0);
-    });
-    return map;
-  },[monthTrades]);
-
-  if(!configOK) return <Shell><ConfigFaltante/></Shell>;
-  if(!ready) return <Shell><div className="bp-wrap"><p className="bp-note">Cargando…</p></div></Shell>;
-  if(!session) return <Gate/>;
-
-  const first = new Date(cursor.y,cursor.m,1);
-  const startDow = (first.getDay()+6)%7;
-  const days = new Date(cursor.y,cursor.m+1,0).getDate();
-  const cells = [];
-  for(let i=0;i<startDow;i++) cells.push(null);
-  for(let d=1;d<=days;d++) cells.push(d);
-
-  const moveMonth = (dir)=> setCursor(c=>{
-    let m=c.m+dir, y=c.y; if(m<0){m=11;y--;} if(m>11){m=0;y++;} return {y,m};
+/* Lee de Supabase (REST, sin instalar nada -> funciona en Vercel).
+   La tabla debe tener: fecha, simbolo, tf, direccion, estructura, pct, usd */
+async function fetchSupabase() {
+  const { url, anonKey, tabla } = CONFIG.supabase;
+  const r = await fetch(`${url}/rest/v1/${tabla}?select=*&order=fecha.asc`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
   });
+  if (!r.ok) throw new Error("Supabase " + r.status);
+  const rows = await r.json();
+  return rows.map((row) => {
+    const pct = Number(row.pct) || 0;
+    const usd = row.usd != null ? Number(row.usd) : (pct / 100) * CONFIG.balanceInicial;
+    const d = String(row.fecha).slice(0, 10);
+    return {
+      id: row.id, date: d, month: +d.slice(5, 7) - 1, day: +d.slice(8, 10),
+      dir: row.direccion || "BUY", estructura: row.estructura || "barato",
+      tf: row.tf || "5m", pct, usd,
+      resultado: pct > 0 ? "Ganada" : pct < 0 ? "Perdida" : "BE",
+    };
+  });
+}
 
+/* =========================================================================
+   PALETA (azul estilo TraderWaves) + helpers
+   ========================================================================= */
+const C = {
+  bg: "#0A0D13", panel: "#10151F", panel2: "#141B27", border: "#1E2733",
+  text: "#E6EBF2", sub: "#8A94A6", faint: "#5A6474",
+  blue: "#3B82F6", blueSoft: "rgba(59,130,246,0.16)",
+  red: "#F0564E", redSoft: "rgba(240,86,78,0.16)",
+  gold: "#E3B341", green: "#2ED47A", be: "#6E8BA0",
+};
+const money = (n) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const moneyK = (n) => (n < 0 ? "-$" : "$") + Math.abs(n).toFixed(0);
+const pctf = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
+const pctK = (n) => (n >= 0 ? "+" : "") + n.toFixed(1) + "%";
+const tone = (n) => (n > 0 ? C.blue : n < 0 ? C.red : C.be);
+
+/* =========================================================================
+   DATOS DEMO  (modelo real: %, USD, BUY/SELL, barato/caro, tf, BE)
+   ========================================================================= */
+function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function generateTrades() {
+  const r = rng(20260706);
+  const tfs = ["5m", "15m", "30m", "H1"], estr = ["barato", "caro"];
+  const plan = [{ m: 1, n: 30, b: 0.9 }, { m: 2, n: 42, b: -0.1 }, { m: 3, n: 36, b: 0.7 }, { m: 4, n: 28, b: -0.25 }, { m: 5, n: 26, b: -0.35 }, { m: 6, n: 20, b: 0.6, max: 6 }];
+  const out = []; let id = 1;
+  plan.forEach(({ m, n, b, max }) => {
+    const last = max || new Date(2026, m + 1, 0).getDate();
+    for (let i = 0; i < n; i++) {
+      const day = 1 + Math.floor(r() * last);
+      const dow = new Date(2026, m, day).getDay(); if (dow === 0 || dow === 6) continue;
+      const roll = r(); const win = roll < 0.5 + b * 0.08; const be = !win && r() < 0.12;
+      const pct = be ? 0 : win ? +(1.8 + r() * 0.5).toFixed(2) : -(0.9 + r() * 0.2);
+      const usd = +((pct / 100) * CONFIG.balanceInicial * (0.9 + r() * 0.2)).toFixed(2);
+      const date = `2026-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      out.push({
+        id: id++, date, month: m, day,
+        dir: r() > 0.5 ? "BUY" : "SELL", estructura: estr[r() > 0.5 ? 0 : 1],
+        tf: tfs[Math.floor(r() * tfs.length)],
+        pct: +pct.toFixed(2), usd, resultado: be ? "BE" : win ? "Ganada" : "Perdida",
+      });
+    }
+  });
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/* =========================================================================
+   AGREGACIONES (calcula % y USD a la vez)
+   ========================================================================= */
+function useAgg(trades, unit) {
+  return useMemo(() => {
+    const isM = unit === "$"; const V = (t) => (isM ? t.usd : t.pct);
+    const byDay = {}, byMonth = {};
+    let wins = 0, losses = 0, gW = 0, gL = 0, netUsd = 0, netPct = 0;
+    trades.forEach((t) => {
+      byDay[t.date] = byDay[t.date] || { pct: 0, usd: 0, n: 0 };
+      byDay[t.date].pct += t.pct; byDay[t.date].usd += t.usd; byDay[t.date].n++;
+      byMonth[t.month] = byMonth[t.month] || { pct: 0, usd: 0, n: 0 };
+      byMonth[t.month].pct += t.pct; byMonth[t.month].usd += t.usd; byMonth[t.month].n++;
+      netUsd += t.usd; netPct += t.pct;
+      if (t.resultado === "Ganada") { wins++; gW += V(t); }
+      else if (t.resultado === "Perdida") { losses++; gL += Math.abs(V(t)); }
+    });
+    const days = Object.values(byDay);
+    const winDays = days.filter((d) => (isM ? d.usd : d.pct) >= 0).length;
+    const winRateDaily = days.length ? (winDays / days.length) * 100 : 0;
+    const winRate = wins + losses ? (wins / (wins + losses)) * 100 : 0;
+    const avgWinDay = days.filter((d) => (isM ? d.usd : d.pct) >= 0).reduce((s, d) => s + (isM ? d.usd : d.pct), 0) / Math.max(1, winDays);
+    const avgLossDay = Math.abs(days.filter((d) => (isM ? d.usd : d.pct) < 0).reduce((s, d) => s + (isM ? d.usd : d.pct), 0)) / Math.max(1, days.length - winDays);
+    const pf = gL ? gW / gL : gW > 0 ? 99 : 0;
+    const net = isM ? netUsd : netPct;
+    const expectancy = trades.length ? net / trades.length : 0;
+
+    const sorted = [...trades].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    let cum = 0; const equity = sorted.map((t, i) => { cum += V(t); return { i, v: +cum.toFixed(2) }; });
+    let peak = 0, maxDD = 0; equity.forEach((p) => { peak = Math.max(peak, p.v); maxDD = Math.max(maxDD, peak - p.v); });
+    let cw = 0, cl = 0, bw = 0, bl = 0;
+    sorted.forEach((t) => { if (t.resultado === "Ganada") { cw++; cl = 0; bw = Math.max(bw, cw); } else if (t.resultado === "Perdida") { cl++; cw = 0; bl = Math.max(bl, cl); } });
+
+    const dailySeries = Object.entries(byDay).sort((a, b) => a[0].localeCompare(b[0])).map(([d, v]) => ({ date: d.slice(5), v: +(isM ? v.usd : v.pct).toFixed(2) }));
+
+    return {
+      byDay, byMonth, netUsd, netPct, net, winRate, winRateDaily, avgWinDay, avgLossDay,
+      pf, expectancy, maxDD, bw, bl, wins, losses, nTrades: trades.length, gW, gL, equity, dailySeries, isM,
+    };
+  }, [trades, unit]);
+}
+
+/* =========================================================================
+   PIEZAS
+   ========================================================================= */
+function Card({ children, style, title, right }) {
   return (
-    <Shell>
-      <div className="bp-wrap">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
-          <div>
-            <div className="bp-eyebrow">Bitácora · Patrón Institucional</div>
-            <h1 className="bp-h1">Registro de operaciones</h1>
-            <div style={{marginTop:8,display:"flex",gap:8,flexWrap:"wrap"}}>
-              <span className="bp-tag"><BookOpen size={12}/> XAUUSD</span>
-              <span className="bp-tag">TP 1:2 · BE 1:1</span>
-              <span className="bp-tag"><Mail size={12}/> {session.user.email}</span>
-            </div>
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button className="bp-btn" onClick={()=>setTab(tab==="bitacora"?"descargas":"bitacora")}>
-              {tab==="bitacora" ? <><Download size={15}/> Descargas</> : <><BookOpen size={15}/> Bitácora</>}
-            </button>
-            <button className="bp-btn" onClick={()=>supabase.auth.signOut()}><LogOut size={15}/> Salir</button>
-          </div>
+    <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, ...style }}>
+      {(title || right) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 11, color: C.sub, letterSpacing: 0.5, fontWeight: 600, textTransform: "uppercase" }}>{title}</span>
+          {right}
         </div>
-
-        {tab==="bitacora" ? (
-          <>
-            <div className="bp-tape">
-              <div className="bp-stat"><span className="v" style={{color:"var(--gold)"}}>{stats.n}</span><span className="l">Entradas mes</span></div>
-              <div className="bp-stat"><span className="v">{stats.wr.toFixed(0)}%</span><span className="l">Aciertos</span></div>
-              <div className="bp-stat"><span className="v" style={{color:"var(--win)"}}>{stats.wins}</span><span className="l">Ganadas</span></div>
-              <div className="bp-stat"><span className="v" style={{color:"var(--loss)"}}>{stats.losses}</span><span className="l">Perdidas</span></div>
-              <div className="bp-stat">
-                <span className="v" style={{color: stats.net>0?"var(--win)":stats.net<0?"var(--loss)":"var(--parch)"}}>
-                  {stats.net>0?"+":""}{stats.net.toFixed(2)}%
-                </span>
-                <span className="l">Resultado neto</span>
-              </div>
-            </div>
-
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"4px 0 14px"}}>
-              <button className="bp-btn" onClick={()=>moveMonth(-1)}><ChevronLeft size={16}/></button>
-              <div style={{fontWeight:600,fontSize:18}} className="bp-mono">{MESES[cursor.m]} {cursor.y}</div>
-              <div style={{display:"flex",gap:8}}>
-                <button className="bp-btn" onClick={()=>moveMonth(1)}><ChevronRight size={16}/></button>
-                <button className="bp-btn gold" onClick={()=>setShowAdd(true)}><Plus size={16}/> Registrar</button>
-              </div>
-            </div>
-
-            <div className="bp-grid" style={{marginBottom:8}}>
-              {DOW.map(d=><div key={d} className="bp-dow">{d}</div>)}
-            </div>
-            <div className="bp-grid">
-              {cells.map((d,i)=>{
-                if(d===null) return <div key={i} className="bp-day empty"/>;
-                const info = byDay[d];
-                const col = !info ? "var(--muted)" : info.net>0?"var(--win)":info.net<0?"var(--loss)":"var(--be)";
-                return (
-                  <div key={i} className="bp-day" style={info?{borderColor:col+"55"}:{}}>
-                    <span className="dn">{d}</span>
-                    {info ? (
-                      <div>
-                        <div className="pct" style={{color:col}}>{info.net>0?"+":""}{info.net.toFixed(1)}%</div>
-                        <div className="cnt">{info.count} {info.count===1?"entrada":"entradas"}</div>
-                      </div>
-                    ) : <div className="cnt" style={{opacity:.4}}>—</div>}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="bp-card" style={{marginTop:22}}>
-              <div className="bp-row" style={{color:"var(--muted)",fontSize:11,letterSpacing:".12em",textTransform:"uppercase"}}>
-                <span>Detalle del mes</span><span>{cargandoDatos?"cargando…":monthTrades.length+" registros"}</span>
-              </div>
-              {monthTrades.length===0 ? (
-                <div style={{padding:"22px 14px"}} className="bp-note">{cargandoDatos?"Trayendo tus datos de la nube…":"Aún no hay entradas este mes. Pulsa “Registrar” cuando el bot mande una señal y anota su resultado."}</div>
-              ) : (
-                [...monthTrades].sort((a,b)=>a.fecha<b.fecha?1:-1).map(t=>(
-                  <div key={t.id} className="bp-row">
-                    <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-                      <span className="bp-mono" style={{fontSize:12,color:"var(--muted)"}}>{t.fecha}</span>
-                      <span className="bp-pill" style={{color:t.direccion==="SELL"?"var(--loss)":"var(--win)"}}>{t.direccion}</span>
-                      <span className="bp-pill">{t.tf}</span>
-                      <span className="bp-pill" style={{color:"var(--golddim)"}}>{t.estructura}</span>
-                    </div>
-                    <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                      <span className="bp-mono" style={{fontWeight:700,color:(Number(t.pct)||0)>0?"var(--win)":(Number(t.pct)||0)<0?"var(--loss)":"var(--be)"}}>
-                        {(Number(t.pct)||0)>0?"+":""}{(Number(t.pct)||0).toFixed(2)}%
-                      </span>
-                      <button className="bp-btn" style={{padding:"5px 8px"}} onClick={()=>borrarTrade(t.id)}><X size={13}/></button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            <p className="bp-note" style={{marginTop:14}}>
-              Tus datos se guardan en la nube (Supabase) y solo tú los ves. Puedes abrir esta bitácora desde cualquier dispositivo con tu correo y contraseña.
-            </p>
-          </>
-        ) : (
-          <Descargas/>
-        )}
-      </div>
-
-      {showAdd && <AddForm onClose={()=>setShowAdd(false)} onSave={async (t)=>{ await agregarTrade(t); setShowAdd(false); }} />}
-    </Shell>
+      )}
+      {children}
+    </div>
   );
 }
-
-function Shell({children}){
-  return <div className="bp-root"><style>{CSS}</style>{children}</div>;
+function Gauge({ value }) {
+  const p = Math.max(0, Math.min(100, value)); const R = 52, cx = 70, cy = 66; const a = Math.PI * (1 - p / 100);
+  const x = cx + R * Math.cos(a), y = cy - R * Math.sin(a); const c = p >= 50 ? C.blue : C.red;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <svg width="140" height="80" viewBox="0 0 140 80">
+        <path d="M18 66 A52 52 0 0 1 122 66" fill="none" stroke={C.border} strokeWidth="10" strokeLinecap="round" />
+        <path d={`M18 66 A52 52 0 0 1 ${x} ${y}`} fill="none" stroke={c} strokeWidth="10" strokeLinecap="round" />
+      </svg>
+      <div style={{ marginTop: -8, fontSize: 26, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{p.toFixed(1)}%</div>
+    </div>
+  );
+}
+function fmtBoth(usd, pct, isM) {
+  return isM
+    ? { big: money(usd), small: pctf(pct) }
+    : { big: pctf(pct), small: money(usd) };
 }
 
-/* ============================ aviso si faltan credenciales ============================ */
-function ConfigFaltante(){
+/* Calendario con total semanal */
+function CalendarMonth({ year, month, byDay, isM }) {
+  const first = new Date(year, month, 1); const startDow = (first.getDay() + 6) % 7;
+  const dim = new Date(year, month + 1, 0).getDate(); const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= dim; d++) cells.push(d);
+  while (cells.length % 7) cells.push(null);
+  const weeks = []; for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  const dn = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+  const key = (d) => `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const short = (v) => (isM ? moneyK(v) : pctK(v));
   return (
-    <div className="bp-wrap" style={{maxWidth:520,paddingTop:80}}>
-      <div className="bp-eyebrow">Configuración</div>
-      <h1 className="bp-h1" style={{marginBottom:10}}>Falta pegar tus datos de Supabase</h1>
-      <div className="bp-card" style={{padding:20}}>
-        <p className="bp-note" style={{marginBottom:10}}>Abre el archivo <span className="bp-mono">src/App.jsx</span> y, arriba del todo, reemplaza:</p>
-        <pre className="bp-mono" style={{background:"var(--ink)",border:"1px solid var(--line)",borderRadius:10,padding:14,fontSize:12,color:"var(--parch)",overflow:"auto"}}>{`const SUPABASE_URL = "https://....supabase.co";
-const SUPABASE_KEY = "sb_publishable_....";`}</pre>
-        <p className="bp-note" style={{marginTop:10}}>Guarda el archivo y la página se conectará sola.</p>
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr) 0.85fr", gap: 6, marginBottom: 6 }}>
+        {dn.map((n) => <div key={n} style={{ fontSize: 11, color: C.faint, textAlign: "center", textTransform: "uppercase" }}>{n}</div>)}
+        <div style={{ fontSize: 11, color: C.faint, textAlign: "center" }}>Sem</div>
       </div>
+      {weeks.map((w, wi) => {
+        const wt = w.reduce((s, d) => (d ? s + (byDay[key(d)]?.[isM ? "usd" : "pct"] || 0) : s), 0);
+        const wc = w.reduce((s, d) => (d ? s + (byDay[key(d)]?.n || 0) : s), 0);
+        return (
+          <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr) 0.85fr", gap: 6, marginBottom: 6 }}>
+            {w.map((d, di) => {
+              if (!d) return <div key={di} />;
+              const info = byDay[key(d)]; const v = info ? info[isM ? "usd" : "pct"] : 0; const has = !!info;
+              return (
+                <div key={di} style={{ minHeight: 56, borderRadius: 8, padding: "6px 8px", background: has ? (v >= 0 ? C.blueSoft : C.redSoft) : C.panel2, border: `1px solid ${has ? (v >= 0 ? "rgba(59,130,246,.35)" : "rgba(240,86,78,.35)") : C.border}`, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: C.faint }}>{d}</span>
+                  {has && <div><div style={{ fontSize: 12, fontWeight: 700, color: tone(v) }}>{short(v)}</div><div style={{ fontSize: 9, color: C.faint }}>{info.n} ops</div></div>}
+                </div>
+              );
+            })}
+            <div style={{ borderRadius: 8, padding: "6px 8px", background: C.bg, border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: wc ? tone(wt) : C.faint }}>{wc ? short(wt) : "—"}</div>
+              <div style={{ fontSize: 9, color: C.faint }}>{wc} ops</div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-/* ============================ login / registro / recuperar ============================ */
-function Gate(){
-  const [modo,setModo] = useState("entrar"); // entrar | registrar | recuperar
-  const [email,setEmail] = useState(""); const [pass,setPass] = useState("");
-  const [busy,setBusy] = useState(false);
-  const [err,setErr] = useState(""); const [ok,setOk] = useState("");
+/* Calendario NAVEGABLE: flechas ‹ › para moverse entre meses y botón Hoy */
+const MESES_FULL = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-  const limpiar = ()=>{ setErr(""); setOk(""); };
-
-  const entrar = async ()=>{
-    limpiar(); setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email:email.trim(), password:pass });
-    setBusy(false);
-    if(error){
-      if(/Email not confirmed/i.test(error.message)) return setErr("Aún no confirmas tu correo. Revisa tu bandeja (y spam) y haz clic en el enlace.");
-      return setErr("Correo o contraseña incorrectos.");
-    }
+function NavigableCalendar({ byDay, isM }) {
+  const hoy = new Date();
+  const [ym, setYm] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
+  const mover = (d) => setYm(({ y, m }) => {
+    const nm = m + d;
+    return { y: y + Math.floor(nm / 12), m: ((nm % 12) + 12) % 12 };
+  });
+  const btn = {
+    background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 8,
+    color: C.sub, cursor: "pointer", padding: "4px 8px",
+    display: "flex", alignItems: "center",
   };
-
-  const registrar = async ()=>{
-    limpiar();
-    if(pass.length<6) return setErr("La contraseña debe tener al menos 6 caracteres.");
-    setBusy(true);
-    const { data, error } = await supabase.auth.signUp({ email:email.trim(), password:pass });
-    setBusy(false);
-    if(error) return setErr(error.message);
-    if(data.user && !data.session){
-      setOk("¡Listo! Te enviamos un correo de confirmación. Ábrelo, haz clic en el enlace y luego entra aquí.");
-      setModo("entrar");
-    }
-  };
-
-  const recuperar = async ()=>{
-    limpiar();
-    if(!email.trim()) return setErr("Escribe tu correo para enviarte el enlace de recuperación.");
-    setBusy(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
-    setBusy(false);
-    if(error) return setErr(error.message);
-    setOk("Te enviamos un correo para restablecer tu contraseña. Revisa tu bandeja (y spam).");
-  };
-
-  const titulo = modo==="registrar" ? "Crear tu cuenta" : modo==="recuperar" ? "Recuperar contraseña" : "Entrar a tu bitácora";
-  const sub = modo==="registrar" ? "Regístrate con tu correo. Te enviaremos un enlace de confirmación."
-            : modo==="recuperar" ? "Te enviaremos un enlace a tu correo para crear una nueva contraseña."
-            : "Ingresa con tu correo y contraseña.";
-
   return (
-    <Shell>
-      <div className="bp-wrap" style={{maxWidth:420,paddingTop:70}}>
-        <div className="bp-eyebrow">Patrón Institucional</div>
-        <h1 className="bp-h1" style={{marginBottom:4}}>{titulo}</h1>
-        <p className="bp-note" style={{marginBottom:22}}>{sub}</p>
-        <div className="bp-card" style={{padding:20}}>
-          {ok && <div className="bp-msg ok">{ok}</div>}
-          {err && <div className="bp-msg err">{err}</div>}
-
-          <label className="bp-label">Correo electrónico</label>
-          <input className="bp-input" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tucorreo@ejemplo.com" style={{marginBottom:14}}/>
-
-          {modo!=="recuperar" && <>
-            <label className="bp-label">Contraseña</label>
-            <input className="bp-input" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••" style={{marginBottom:18}}
-              onKeyDown={e=>{ if(e.key==="Enter") (modo==="registrar"?registrar():entrar()); }}/>
-          </>}
-
-          {modo==="entrar" && <>
-            <button className="bp-btn gold" disabled={busy} style={{width:"100%",justifyContent:"center"}} onClick={entrar}>
-              <LogIn size={16}/> {busy?"Entrando…":"Entrar"}
-            </button>
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:14}}>
-              <button className="bp-link" onClick={()=>{limpiar();setModo("registrar");}}>Crear cuenta nueva</button>
-              <button className="bp-link" onClick={()=>{limpiar();setModo("recuperar");}}>Olvidé mi contraseña</button>
-            </div>
-          </>}
-
-          {modo==="registrar" && <>
-            <button className="bp-btn gold" disabled={busy} style={{width:"100%",justifyContent:"center"}} onClick={registrar}>
-              <Check size={16}/> {busy?"Creando…":"Crear cuenta"}
-            </button>
-            <div style={{marginTop:14,textAlign:"center"}}>
-              <button className="bp-link" onClick={()=>{limpiar();setModo("entrar");}}>Ya tengo cuenta · Entrar</button>
-            </div>
-          </>}
-
-          {modo==="recuperar" && <>
-            <button className="bp-btn gold" disabled={busy} style={{width:"100%",justifyContent:"center"}} onClick={recuperar}>
-              <Mail size={16}/> {busy?"Enviando…":"Enviar enlace"}
-            </button>
-            <div style={{marginTop:14,textAlign:"center"}}>
-              <button className="bp-link" onClick={()=>{limpiar();setModo("entrar");}}>Volver a entrar</button>
-            </div>
-          </>}
+    <Card
+      title={`${MESES_FULL[ym.m]} ${ym.y}`}
+      right={
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button onClick={() => mover(-1)} style={btn} title="Mes anterior"><ChevronLeft size={15} /></button>
+          <button onClick={() => setYm({ y: hoy.getFullYear(), m: hoy.getMonth() })} style={{ ...btn, fontSize: 11, fontWeight: 600 }}>Hoy</button>
+          <button onClick={() => mover(1)} style={btn} title="Mes siguiente"><ChevronRight size={15} /></button>
         </div>
-        <p className="bp-note" style={{marginTop:16}}>Tus datos quedan guardados de forma segura en la nube y solo tú puedes verlos.</p>
-      </div>
-    </Shell>
+      }
+    >
+      <CalendarMonth year={ym.y} month={ym.m} byDay={byDay} isM={isM} />
+    </Card>
   );
 }
 
-/* ============================ formulario ============================ */
-function AddForm({onClose,onSave}){
-  const [f,setF] = useState({ fecha:hoy(), simbolo:"XAUUSD", tf:"5m", direccion:"BUY", estructura:"barato", resultado:"Ganada", pct:"2.00" });
-  const [guardando,setGuardando] = useState(false);
-  const set = (k,v)=>setF(s=>({...s,[k]:v}));
-  const sugerir = (res)=>{ set("resultado",res); if(res==="Ganada") set("pct","2.00"); else if(res==="Perdida") set("pct","-1.00"); else set("pct","0.00"); };
+function Kpi({ label, big, small, tone: tn }) {
+  return (
+    <Card style={{ padding: 14 }}>
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 21, fontWeight: 700, color: tn || C.text, fontVariantNumeric: "tabular-nums" }}>{big}</div>
+      {small && <div style={{ fontSize: 11, color: C.faint, marginTop: 2 }}>{small}</div>}
+    </Card>
+  );
+}
 
-  const sel = (label,val,key,opts)=>(
-    <div>
-      <label className="bp-label">{label}</label>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {opts.map(o=>(
-          <button key={o} className="bp-btn" style={val===o?{borderColor:"var(--gold)",color:"var(--gold)"}:{}} onClick={()=> key==="resultado"?sugerir(o):set(key,o)}>{o}</button>
+/* =========================================================================
+   APP
+   ========================================================================= */
+export default function App() {
+  const [tab, setTab] = useState("panel");
+  const [unit, setUnit] = useState("$");           // "$" | "%"
+  const [showAdd, setShowAdd] = useState(false);
+  const [base, setBase] = useState([]);
+  const [extra, setExtra] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => { (async () => {
+    try {
+      if (CONFIG.dataSource === "supabase") setBase(await fetchSupabase());
+      else setBase(generateTrades());
+    } catch (e) { setErr(e.message); setBase(generateTrades()); }
+    setLoading(false);
+  })(); }, []);
+
+  const trades = useMemo(() => [...base, ...extra], [base, extra]);
+  const A = useAgg(trades, unit);
+  const isM = unit === "$";
+  const equityNow = CONFIG.balanceInicial + A.netUsd;
+
+  const nav = [
+    { id: "panel", label: "Panel", icon: LayoutGrid },
+    { id: "calendario", label: "Calendario", icon: CalendarDays },
+    { id: "operaciones", label: "Operaciones", icon: ListOrdered },
+    { id: "metricas", label: "Métricas", icon: Activity },
+    { id: "analisis", label: "Análisis", icon: Layers },
+  ];
+
+  return (
+    <div style={{ display: "flex", minHeight: 720, background: C.bg, color: C.text, fontFamily: "Inter, system-ui, sans-serif", fontSize: 14 }}>
+      {/* SIDEBAR */}
+      <aside style={{ width: 190, background: C.panel, borderRight: `1px solid ${C.border}`, padding: "18px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 18px" }}>
+          <div style={{ width: 10, height: 10, borderRadius: 3, background: C.gold }} />
+          <span style={{ fontWeight: 800, letterSpacing: 1, fontSize: 14 }}>BITÁCORA<span style={{ color: C.gold }}>·</span>XAU</span>
+        </div>
+        <div style={{ fontSize: 10, color: C.faint, padding: "0 8px 6px", letterSpacing: 1 }}>PANEL</div>
+        {nav.map((n) => { const I = n.icon; const on = tab === n.id;
+          return (
+            <button key={n.id} onClick={() => setTab(n.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: on ? C.blueSoft : "transparent", color: on ? C.blue : C.sub, fontWeight: on ? 600 : 500, fontSize: 13, textAlign: "left" }}>
+              <I size={16} /> {n.label}
+            </button>
+          );
+        })}
+        <div style={{ marginTop: "auto", padding: 10, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+          <div style={{ fontSize: 10, color: C.faint, display: "flex", alignItems: "center", gap: 5 }}><Wallet size={12} /> EQUITY</div>
+          <div style={{ fontSize: 17, fontWeight: 700, marginTop: 3, color: tone(A.netUsd) }}>{money(equityNow)}</div>
+        </div>
+      </aside>
+
+      {/* MAIN */}
+      <main style={{ flex: 1, padding: 20, overflow: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px" }}>
+            <Circle size={9} fill={C.green} color={C.green} />
+            <span style={{ fontWeight: 600 }}>{CONFIG.cuenta}</span>
+            <span style={{ fontSize: 11, color: C.faint }}>{CONFIG.modo}</span>
+            <span style={{ fontSize: 10, color: CONFIG.dataSource === "supabase" ? C.green : C.gold, border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 6px", marginLeft: 4 }}>
+              {CONFIG.dataSource === "supabase" ? "Supabase" : "Demo"}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+              {["$", "%"].map((u) => (
+                <button key={u} onClick={() => setUnit(u)} style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 12px", border: "none", cursor: "pointer", background: unit === u ? C.blueSoft : "transparent", color: unit === u ? C.blue : C.sub, fontWeight: 600, fontSize: 13 }}>
+                  {u === "$" ? <DollarSign size={13} /> : <Percent size={13} />} {u === "$" ? "USD" : "%"}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setShowAdd(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: C.gold, color: "#1a1408", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+              <Plus size={15} /> Registrar
+            </button>
+          </div>
+        </div>
+
+        {err && <div style={{ marginBottom: 12, padding: 10, background: C.redSoft, border: `1px solid ${C.red}`, borderRadius: 8, fontSize: 12, color: C.red }}>Supabase: {err} — mostrando datos demo.</div>}
+        {loading ? <div style={{ padding: 40, color: C.sub }}>Cargando…</div> : (
+          <>
+            {tab === "panel" && <Panel A={A} isM={isM} />}
+            {tab === "calendario" && <NavigableCalendar byDay={A.byDay} isM={isM} />}
+            {tab === "operaciones" && <TradeTable trades={[...trades].reverse()} isM={isM} onDelete={(id) => setExtra((e) => e.filter((x) => x.id !== id))} />}
+            {tab === "metricas" && <Metrics A={A} />}
+            {tab === "analisis" && <Analisis trades={trades} isM={isM} />}
+          </>
+        )}
+      </main>
+
+      {showAdd && <AddModal onClose={() => setShowAdd(false)} onSave={(t) => { setExtra((e) => [...e, t]); setShowAdd(false); }} />}
+    </div>
+  );
+}
+
+/* ---------- PANEL ---------- */
+function Panel({ A, isM }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+        <Kpi label="P&L Neto" big={isM ? money(A.netUsd) : pctf(A.netPct)} small={isM ? pctf(A.netPct) : money(A.netUsd)} tone={tone(A.net)} />
+        <Kpi label="Profit Factor" big={A.pf.toFixed(2)} small="ganancia / pérdida" tone={A.pf >= 1 ? C.blue : C.red} />
+        <Kpi label="Win Rate" big={`${A.winRate.toFixed(1)}%`} small={`${A.wins}G · ${A.losses}P`} />
+        <Kpi label="Expectancy" big={isM ? money(A.expectancy) : pctf(A.expectancy)} small="por operación" tone={tone(A.expectancy)} />
+        <Kpi label="Max Drawdown" big={isM ? money(-A.maxDD) : pctf(-A.maxDD)} small="pico a valle" tone={C.red} />
+        <Kpi label="Racha" big={`${A.bw}W · ${A.bl}L`} small={`${A.nTrades} operaciones`} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.9fr) minmax(0,1fr)", gap: 16 }}>
+        <NavigableCalendar byDay={A.byDay} isM={isM} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Card title="Win Rate diario"><Gauge value={A.winRateDaily} /></Card>
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <span style={{ fontSize: 12, color: C.sub }}>Ganancia / Pérdida prom.</span>
+              <span style={{ fontSize: 20, fontWeight: 700, color: A.avgLossDay ? (A.avgWinDay / A.avgLossDay >= 1 ? C.blue : C.red) : C.blue }}>
+                {A.avgLossDay ? (A.avgWinDay / A.avgLossDay).toFixed(2) : "—"}
+              </span>
+            </div>
+            <div style={{ display: "flex", height: 10, borderRadius: 6, overflow: "hidden", background: C.border }}>
+              <div style={{ width: `${(A.avgWinDay / (A.avgWinDay + A.avgLossDay || 1)) * 100}%`, background: C.blue }} />
+              <div style={{ flex: 1, background: C.red }} />
+            </div>
+          </Card>
+          <Card title="P&L Neto Diario">
+            <div style={{ fontSize: 22, fontWeight: 800, color: tone(A.net), marginBottom: 8 }}>{isM ? money(A.netUsd) : pctf(A.netPct)}</div>
+            <ResponsiveContainer width="100%" height={110}>
+              <BarChart data={A.dailySeries}>
+                <XAxis dataKey="date" hide /><ReferenceLine y={0} stroke={C.border} />
+                <Tooltip cursor={{ fill: "rgba(255,255,255,.03)" }} contentStyle={{ background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => [isM ? money(v) : pctf(v), "P&L"]} />
+                <Bar dataKey="v" radius={[2, 2, 0, 0]}>{A.dailySeries.map((d, i) => <Cell key={i} fill={d.v >= 0 ? C.blue : C.red} />)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+      </div>
+
+      <Card title="Curva de capital" right={<span style={{ fontSize: 11, color: C.faint }}>{isM ? "USD acumulado" : "% acumulado"}</span>}>
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={A.equity}>
+            <defs><linearGradient id="eq" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.blue} stopOpacity={0.35} /><stop offset="100%" stopColor={C.blue} stopOpacity={0} /></linearGradient></defs>
+            <XAxis dataKey="i" hide /><YAxis hide domain={["auto", "auto"]} /><ReferenceLine y={0} stroke={C.border} />
+            <Tooltip contentStyle={{ background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => [isM ? money(v) : pctf(v), "Capital"]} labelFormatter={() => ""} />
+            <Area type="monotone" dataKey="v" stroke={C.blue} strokeWidth={2} fill="url(#eq)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <Card title="Rendimiento anual · 2026">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(84px,1fr))", gap: 8 }}>
+          {MESES.map((m, i) => {
+            const info = A.byMonth[i]; const has = !!info; const v = has ? info[isM ? "usd" : "pct"] : 0;
+            return (
+              <div key={m} style={{ borderRadius: 8, padding: "10px 8px", minHeight: 66, background: has ? (v >= 0 ? C.blueSoft : C.redSoft) : C.panel2, border: `1px solid ${has ? (v >= 0 ? "rgba(59,130,246,.35)" : "rgba(240,86,78,.35)") : C.border}`, textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: C.faint, textTransform: "uppercase" }}>{m}</div>
+                {has ? <><div style={{ fontSize: 14, fontWeight: 700, color: tone(v), marginTop: 6 }}>{isM ? moneyK(v) : pctK(v)}</div><div style={{ fontSize: 10, color: C.faint }}>{info.n} ops</div></> : <div style={{ fontSize: 16, color: C.border, marginTop: 10 }}>–</div>}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ---------- OPERACIONES ---------- */
+function TradeTable({ trades, isM, onDelete }) {
+  const th = { padding: "10px 12px", fontSize: 11, color: C.sub, textAlign: "left", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.3 };
+  const td = { padding: "10px 12px", fontSize: 13, borderTop: `1px solid ${C.border}` };
+  return (
+    <Card title={`Operaciones (${trades.length})`}>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <th style={th}>Fecha</th><th style={th}>Dir.</th><th style={th}>Estructura</th><th style={th}>TF</th>
+            <th style={{ ...th, textAlign: "right" }}>%</th><th style={{ ...th, textAlign: "right" }}>USD</th><th style={th}>Resultado</th><th style={th}></th>
+          </tr></thead>
+          <tbody>
+            {trades.slice(0, 80).map((t) => (
+              <tr key={t.id}>
+                <td style={{ ...td, color: C.sub }}>{t.date}</td>
+                <td style={{ ...td, color: t.dir === "BUY" ? C.blue : C.red, fontWeight: 600 }}>{t.dir}</td>
+                <td style={{ ...td, color: C.gold }}>{t.estructura}</td>
+                <td style={{ ...td, color: C.sub }}>{t.tf}</td>
+                <td style={{ ...td, textAlign: "right", color: tone(t.pct), fontVariantNumeric: "tabular-nums" }}>{pctf(t.pct)}</td>
+                <td style={{ ...td, textAlign: "right", fontWeight: 600, color: tone(t.usd), fontVariantNumeric: "tabular-nums" }}>{money(t.usd)}</td>
+                <td style={td}><span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: t.resultado === "Ganada" ? C.blueSoft : t.resultado === "Perdida" ? C.redSoft : "rgba(110,139,160,.16)", color: t.resultado === "Ganada" ? C.blue : t.resultado === "Perdida" ? C.red : C.be }}>{t.resultado}</span></td>
+                <td style={td}>{onDelete && <button onClick={() => onDelete(t.id)} style={{ background: "none", border: "none", color: C.faint, cursor: "pointer" }}><X size={14} /></button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {trades.length > 80 && <div style={{ textAlign: "center", padding: 12, fontSize: 12, color: C.faint }}>Mostrando 80 de {trades.length}</div>}
+      </div>
+    </Card>
+  );
+}
+
+/* ---------- MÉTRICAS ---------- */
+function Metrics({ A }) {
+  const rows = [
+    ["P&L neto (USD)", money(A.netUsd)], ["P&L neto (%)", pctf(A.netPct)],
+    ["Ganancia bruta", A.isM ? money(A.gW) : pctf(A.gW)], ["Pérdida bruta", A.isM ? money(-A.gL) : pctf(-A.gL)],
+    ["Profit factor", A.pf.toFixed(2)], ["Expectancy / op.", A.isM ? money(A.expectancy) : pctf(A.expectancy)],
+    ["Win rate (op.)", `${A.winRate.toFixed(1)}%`], ["Win rate (diario)", `${A.winRateDaily.toFixed(1)}%`],
+    ["Max drawdown", A.isM ? money(-A.maxDD) : pctf(-A.maxDD)], ["Racha ganadora máx.", `${A.bw} ops`],
+    ["Racha perdedora máx.", `${A.bl} ops`], ["Operaciones", A.nTrades],
+    ["Ganadas", A.wins], ["Perdidas", A.losses],
+  ];
+  return (
+    <Card title="Resumen de rendimiento">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+        {rows.map(([k, v]) => (
+          <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "11px 6px", borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ color: C.sub, fontSize: 13 }}>{k}</span>
+            <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{v}</span>
+          </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
+}
 
-  const guardar = async ()=>{ setGuardando(true); await onSave(f); setGuardando(false); };
-
+/* ---------- ANÁLISIS (por estructura / dirección / temporalidad) ---------- */
+function Analisis({ trades, isM }) {
+  const group = (field) => {
+    const map = {};
+    trades.forEach((t) => {
+      const k = t[field]; map[k] = map[k] || { n: 0, net: 0, w: 0, l: 0, gW: 0, gL: 0 };
+      const v = isM ? t.usd : t.pct; map[k].n++; map[k].net += v;
+      if (t.resultado === "Ganada") { map[k].w++; map[k].gW += v; } else if (t.resultado === "Perdida") { map[k].l++; map[k].gL += Math.abs(v); }
+    });
+    return Object.entries(map).map(([k, m]) => ({ k, ...m, wr: m.w + m.l ? (m.w / (m.w + m.l)) * 100 : 0, pf: m.gL ? m.gW / m.gL : m.gW > 0 ? 99 : 0 }));
+  };
+  const blocks = [["Por estructura", group("estructura")], ["Por dirección", group("dir")], ["Por temporalidad", group("tf")]];
   return (
-    <div className="bp-overlay" onClick={onClose}>
-      <div className="bp-card" style={{padding:22,width:"100%",maxWidth:460}} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <div className="bp-eyebrow">Nueva entrada</div>
-          <button className="bp-btn" style={{padding:"6px 9px"}} onClick={onClose}><X size={15}/></button>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-            <div style={{flex:1,minWidth:140}}>
-              <label className="bp-label">Fecha</label>
-              <input className="bp-input" type="date" value={f.fecha} onChange={e=>set("fecha",e.target.value)}/>
-            </div>
-            <div style={{flex:1,minWidth:140}}>
-              <label className="bp-label">Símbolo</label>
-              <input className="bp-input" value={f.simbolo} onChange={e=>set("simbolo",e.target.value)}/>
-            </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {blocks.map(([title, rows]) => (
+        <Card key={title} title={title}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
+            {rows.map((r) => (
+              <div key={r.k} style={{ background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                  <TrendingUp size={14} color={C.gold} /><span style={{ fontWeight: 700 }}>{r.k}</span>
+                  <span style={{ marginLeft: "auto", fontSize: 11, color: C.faint }}>{r.n} ops</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div><div style={{ fontSize: 10, color: C.sub }}>P&L</div><div style={{ fontSize: 17, fontWeight: 700, color: tone(r.net) }}>{isM ? money(r.net) : pctf(r.net)}</div></div>
+                  <div><div style={{ fontSize: 10, color: C.sub }}>Profit factor</div><div style={{ fontSize: 17, fontWeight: 700, color: r.pf >= 1 ? C.blue : C.red }}>{r.pf.toFixed(2)}</div></div>
+                  <div><div style={{ fontSize: 10, color: C.sub }}>Win rate</div><div style={{ fontSize: 15, fontWeight: 600 }}>{r.wr.toFixed(0)}%</div></div>
+                  <div><div style={{ fontSize: 10, color: C.sub }}>G / P</div><div style={{ fontSize: 15, fontWeight: 600 }}>{r.w} / {r.l}</div></div>
+                </div>
+              </div>
+            ))}
           </div>
-          {sel("Temporalidad",f.tf,"tf",["5m","15m","30m","H1"])}
-          {sel("Dirección",f.direccion,"direccion",["BUY","SELL"])}
-          {sel("Estructura",f.estructura,"estructura",["barato","caro"])}
-          {sel("Resultado",f.resultado,"resultado",["Ganada","Perdida","BE"])}
-          <div>
-            <label className="bp-label">Resultado %</label>
-            <input className="bp-input" type="number" step="0.01" value={f.pct} onChange={e=>set("pct",e.target.value)}/>
-          </div>
-          <button className="bp-btn gold" disabled={guardando} style={{justifyContent:"center"}} onClick={guardar}><Check size={16}/> {guardando?"Guardando…":"Guardar entrada"}</button>
-        </div>
-      </div>
+        </Card>
+      ))}
     </div>
   );
 }
 
-/* ============================ descargas ============================ */
-function Descargas(){
-  const [copied,setCopied] = useState(false);
-  const descargar = ()=>{
-    const blob = new Blob([MQL5],{type:"text/plain;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href=url; a.download="TP_Flotante_Patron.mq5"; a.click();
-    URL.revokeObjectURL(url);
-  };
-  const copiar = async ()=>{ try{ await navigator.clipboard.writeText(MQL5); setCopied(true); setTimeout(()=>setCopied(false),1500);}catch(e){} };
-
+/* ---------- MODAL REGISTRAR ---------- */
+function AddModal({ onClose, onSave }) {
+  const [f, setF] = useState({ date: "2026-07-06", dir: "BUY", estructura: "barato", tf: "5m", resultado: "Ganada", pct: "2.00" });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const sug = (res) => { set("resultado", res); set("pct", res === "Ganada" ? "2.00" : res === "Perdida" ? "-1.00" : "0.00"); };
+  const inp = { width: "100%", padding: "9px 10px", background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: "none" };
+  const lbl = { fontSize: 11, color: C.sub, marginBottom: 5, display: "block" };
+  const chips = (val, key, opts, onPick) => (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {opts.map((o) => <button key={o} onClick={() => (onPick ? onPick(o) : set(key, o))} style={{ padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, background: val === o ? C.blueSoft : C.panel2, color: val === o ? C.blue : C.sub, border: `1px solid ${val === o ? C.blue : C.border}` }}>{o}</button>)}
+    </div>
+  );
   return (
-    <>
-      <div className="bp-tape" style={{borderBottom:"none"}}>
-        <div className="bp-stat"><span className="v" style={{color:"var(--gold)"}}>MT5</span><span className="l">Compatible con MetaTrader 5</span></div>
-      </div>
-      <div className="bp-card" style={{padding:22,marginTop:4}}>
-        <div className="bp-eyebrow">Indicador</div>
-        <h2 style={{fontSize:20,fontWeight:700,margin:"6px 0 6px"}}>Regla de TP flotante</h2>
-        <p className="bp-note" style={{marginBottom:16}}>
-          Dibuja en tu gráfico las líneas de Entrada, SL, BE (1:1) y TP (1:2) a partir de la entrada y el SL que le indiques. Útil para visualizar el riesgo de cada operación del patrón.
-        </p>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:18}}>
-          <button className="bp-btn gold" onClick={descargar}><Download size={16}/> Descargar .mq5</button>
-          <button className="bp-btn" onClick={copiar}>{copied?<><Check size={15}/> Copiado</>:<><Copy size={15}/> Copiar código</>}</button>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 440, maxWidth: "94vw", background: C.panel, border: `1px solid ${C.border}`, borderRadius: 14, padding: 22 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+          <span style={{ fontWeight: 700, fontSize: 16 }}>Registrar operación</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.sub, cursor: "pointer" }}><X size={18} /></button>
         </div>
-        <pre className="bp-mono" style={{background:"var(--ink)",border:"1px solid var(--line)",borderRadius:10,padding:14,overflow:"auto",fontSize:11.5,lineHeight:1.55,maxHeight:300,color:"var(--parch)"}}>{MQL5}</pre>
-        <div style={{marginTop:16,borderTop:"1px solid var(--line)",paddingTop:14}}>
-          <div className="bp-label" style={{marginBottom:8}}>Cómo instalarlo</div>
-          <ol className="bp-note" style={{paddingLeft:18,lineHeight:1.7}}>
-            <li>MT5 → Archivo → Abrir carpeta de datos → MQL5 → Indicators.</li>
-            <li>Pega ahí el archivo <span className="bp-mono">TP_Flotante_Patron.mq5</span>.</li>
-            <li>En MetaEditor pulsa Compilar (F7).</li>
-            <li>Arrástralo al gráfico y escribe tu Entrada y SL en las opciones.</li>
-          </ol>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div><label style={lbl}>Fecha</label><input style={inp} type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></div>
+          <div><label style={lbl}>Dirección</label>{chips(f.dir, "dir", ["BUY", "SELL"])}</div>
+          <div><label style={lbl}>Estructura</label>{chips(f.estructura, "estructura", ["barato", "caro"])}</div>
+          <div><label style={lbl}>Temporalidad</label>{chips(f.tf, "tf", ["5m", "15m", "30m", "H1"])}</div>
+          <div><label style={lbl}>Resultado</label>{chips(f.resultado, "resultado", ["Ganada", "Perdida", "BE"], sug)}</div>
+          <div><label style={lbl}>Resultado %</label><input style={inp} value={f.pct} onChange={(e) => set("pct", e.target.value)} /></div>
         </div>
+        <button onClick={() => {
+          const pct = parseFloat(f.pct) || 0; const m = parseInt(f.date.slice(5, 7)) - 1;
+          onSave({ id: Date.now(), date: f.date, month: m, day: parseInt(f.date.slice(8)), dir: f.dir, estructura: f.estructura, tf: f.tf, pct, usd: +((pct / 100) * CONFIG.balanceInicial).toFixed(2), resultado: pct > 0 ? "Ganada" : pct < 0 ? "Perdida" : "BE" });
+        }} style={{ width: "100%", marginTop: 18, padding: 11, background: C.gold, color: "#1a1408", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Guardar operación</button>
       </div>
-    </>
+    </div>
   );
 }
